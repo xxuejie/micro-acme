@@ -4,6 +4,13 @@
   "Tags": ["acme", "plan9"],
   "Versions": [
     {
+      "Version": "0.0.3",
+      "Url": "https://github.com/xxuejie/micro-acme/archive/v0.0.3.zip",
+      "Require": {
+        "micro": ">=2.0.0"
+      }
+    },
+    {
       "Version": "0.0.2",
       "Url": "https://github.com/xxuejie/micro-acme/archive/v0.0.2.zip",
       "Require": {

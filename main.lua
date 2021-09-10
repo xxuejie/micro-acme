@@ -135,21 +135,32 @@ end
 
 function search(_pane, args)
     local v = micro.CurPane()
-    if v.Cursor == nil then
+
+    local startLoc = nil
+    local endLoc = nil
+    local m = nil
+
+    if v.Cursor:HasSelection() then
+	    startLoc, endLoc = getTextLoc()
+	    m = getText(startLoc, endLoc)
+	elseif v.Cursor ~= nil then
+	    local line = v.Buf:Line(v.Cursor.Loc.Y)
+
+		local s1 = string.sub(line, 1, v.Cursor.Loc.X - 1)
+		local s2 = string.sub(line, v.Cursor.Loc.X)
+
+		local m1 = string.match(s1, "[^%s]*$")
+		local m2 = string.match(s2, "[^%s]*")
+
+		m = m1 .. m2
+
+		startLoc = buffer.Loc(v.Cursor.Loc.X - #m1, v.Cursor.Loc.Y)
+		endLoc = buffer.Loc(startLoc.X + #m - 1, v.Cursor.Loc.Y)
+    end
+
+    if m == nil or startLoc == nil or endLoc == nil then
 	    return
 	end
-
-	local line = v.Buf:Line(v.Cursor.Loc.Y)
-
-	local s1 = string.sub(line, 1, v.Cursor.Loc.X - 1)
-	local s2 = string.sub(line, v.Cursor.Loc.X)
-
-	local m1 = string.match(s1, "[^%s]*$")
-	local m2 = string.match(s2, "[^%s]*")
-
-	local m = m1 .. m2
-
-	local startIndex = v.Cursor.Loc.X - #m1
 
 	local data = strings.Split(m, ":")
 	local filename = data[1]
@@ -173,10 +184,7 @@ function search(_pane, args)
 		end
 	else
 		-- Search
-		local endIndex = startIndex + #filename - 1
-		local endLoc = buffer.Loc(endIndex, v.Cursor.Loc.Y)
-
-		local match, found, err = v.Buf:FindNext(filename, v.Buf:Start(), v.Buf:End(),
+		local match, found, err = v.Buf:FindNext(m, v.Buf:Start(), v.Buf:End(),
 			endLoc, true, false)
 		if err ~= nil then
 			micro.InfoBar():Error(err)
