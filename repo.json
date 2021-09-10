@@ -1,0 +1,14 @@
+[{
+  "Name": "acme",
+  "Description": "Acme style editing plugin",
+  "Tags": ["acme", "plan9"],
+  "Versions": [
+    {
+      "Version": "0.0.1",
+      "Url": "https://github.com/xxuejie/micro-acme/archive/v0.0.1.zip",
+      "Require": {
+        "micro": ">=2.0.0"
+      }
+    }
+  ]
+}]
