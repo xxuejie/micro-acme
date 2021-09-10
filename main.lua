@@ -1,10 +1,11 @@
-SION = "0.0.1"
+VERSION = "0.0.2"
 
 local micro = import("micro")
 local buffer = import("micro/buffer")
 local config = import("micro/config")
 local shell = import("micro/shell")
 local strings = import("strings")
+local os = import("os")
 
 function goSliceToLuaArray(slice, s, e)
 	local result = {}
@@ -127,6 +128,11 @@ function execute(_pane, args)
 	showOutput(innerExecute(args))
 end
 
+function isFileExists(filename)
+	local _info, err = os.Stat(filename)
+	return not os.IsNotExist(err)
+end
+
 function search(_pane, args)
     local v = micro.CurPane()
     if v.Cursor == nil then
@@ -143,22 +149,45 @@ function search(_pane, args)
 
 	local m = m1 .. m2
 
+	local startIndex = v.Cursor.Loc.X - #m1
+
 	local data = strings.Split(m, ":")
+	local filename = data[1]
 
-	-- TODO: add more handling
-	local b, err = buffer.NewBufferFromFile(data[1])
-	if err ~= nil then
-		micro.InfoBar():Error(err)
-		return
-	end
+	if isFileExists(filename) then
+		-- Load file
+		-- TODO: add more handling
+		local b, err = buffer.NewBufferFromFile(data[1])
+		if err ~= nil then
+			micro.InfoBar():Error(err)
+			return
+		end
 
-	v:HSplitIndex(b, true)
-	local nv = micro.CurPane()
-	if #data > 1 and string.match(data[2], "%d") then
-		nv.Cursor.Loc.Y = tonumber(data[2]) - 1
-		nv.Cursor:GotoLoc(-nv.Cursor.Loc)
-		nv.Cursor:ResetSelection()
-		nv:Relocate()
+		v:HSplitIndex(b, true)
+		local nv = micro.CurPane()
+		if #data > 1 and string.match(data[2], "%d") then
+			local loc = buffer.Loc(0, tonumber(data[2]) - 1)
+			nv.Cursor:GotoLoc(loc)
+			nv.Cursor:ResetSelection()
+			nv:Relocate()
+		end
+	else
+		-- Search
+		local endIndex = startIndex + #filename - 1
+		local endLoc = buffer.Loc(endIndex, v.Cursor.Loc.Y)
+
+		local match, found, err = v.Buf:FindNext(filename, v.Buf:Start(), v.Buf:End(),
+			endLoc, true, false)
+		if err ~= nil then
+			micro.InfoBar():Error(err)
+			return
+		end
+		if found then
+			v.Cursor:SetSelectionStart(match[1])
+			v.Cursor:SetSelectionEnd(match[2])
+			v.Cursor:GotoLoc(match[2])
+			v:Relocate()
+		end
 	end
 end
 
