@@ -108,12 +108,12 @@ function pipeIn(pane, args)
   if err ~= nil then
     showOutput(output, err)
   else
-    pane.Buf:Replace(a, b, strings.TrimSpace(output))
+    pane.Buf:Replace(a, b, strings.TrimSuffix(output, "\n"))
   end
 end
 
 function showErrOrReplaceText(output, userargs)
-  userargs[1].Buf:Replace(userargs[2], userargs[3], strings.TrimSpace(output))
+  userargs[1].Buf:Replace(userargs[2], userargs[3], strings.TrimSuffix(output, "\n"))
 end
 
 function pipeBoth(pane, args)
