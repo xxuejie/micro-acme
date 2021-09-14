@@ -7,20 +7,24 @@ local shell = import("micro/shell")
 local strings = import("strings")
 local os = import("os")
 
-function goSliceToLuaArray(slice, s, e)
-  local result = {}
-  for i = s, e do
-    result[#result + 1] = slice[i]
+function normalizeArgs(args)
+  local result = ""
+  for i = 1, #args do
+    result = result .. " \"" .. string.gsub(args[i], "\"", "\\\"") .. "\""
   end
   return result
 end
 
-function innerExecute(args)
+SHELL = "bash"
+function wrapWithShell(path, args)
+  return {"-l", "-c", "samfile=\"" .. path .. "\" " .. normalizeArgs(args)}
+end
+
+function innerExecute(path, args)
   if args ~= nil and #args == 0 then
     return
   end
-  normalizeArgs(args)
-  return shell.ExecCommand(args[1], unpack(goSliceToLuaArray(args, 2, #args)))
+  return shell.ExecCommand(SHELL, unpack(wrapWithShell(path, args)))
 end
 
 function showOutput(output, err)
@@ -42,8 +46,8 @@ function showStdinExecuteOutput(output, _userargs)
   showOutput(output, nil)
 end
 
-function innerExecuteWithStdin(args, stdin, onExit, userargs)
-  local job = shell.JobSpawn(args[1], goSliceToLuaArray(args, 2, #args),
+function innerExecuteWithStdin(path, args, stdin, onExit, userargs)
+  local job = shell.JobSpawn(SHELL, wrapWithShell(path, args),
     nil, nil, onExit, unpack(userargs))
   shell.JobSend(job, stdin)
 	job.Stdin:Close()
@@ -90,24 +94,21 @@ function getText(a, b)
 end
 
 
-function pipeOut(_pane, args)
-  local v = micro.CurPane()
+function pipeOut(pane, args)
   local a, b = getTextLoc()
-
   local oldTxt = getText(a,b)
 
-  innerExecuteWithStdin(args, oldTxt, showStdinExecuteOutput, {})
+  innerExecuteWithStdin(pane.Buf.Path, args, oldTxt, showStdinExecuteOutput, {})
 end
 
-function pipeIn(_pane, args)
-  local v = micro.CurPane()
+function pipeIn(pane, args)
   local a, b = getTextLoc()
 
-  local output, err = innerExecute(args)
+  local output, err = innerExecute(pane.Buf.Path, args)
   if err ~= nil then
     showOutput(output, err)
   else
-    v.Buf:Replace(a, b, strings.TrimSpace(output))
+    pane.Buf:Replace(a, b, strings.TrimSpace(output))
   end
 end
 
@@ -115,17 +116,16 @@ function showErrOrReplaceText(output, userargs)
   userargs[1].Buf:Replace(userargs[2], userargs[3], strings.TrimSpace(output))
 end
 
-function pipeBoth(_pane, args)
-  local v = micro.CurPane()
+function pipeBoth(pane, args)
   local a, b = getTextLoc()
 
   local oldTxt = getText(a,b)
 
-  innerExecuteWithStdin(args, oldTxt, showErrOrReplaceText, {v, a, b})
+  innerExecuteWithStdin(pane.Buf.Path, args, oldTxt, showErrOrReplaceText, {pane, a, b})
 end
 
-function execute(_pane, args)
-  showOutput(innerExecute(args))
+function execute(pane, args)
+  showOutput(innerExecute(pane.Buf.Path, args))
 end
 
 function isFileExists(filename)
