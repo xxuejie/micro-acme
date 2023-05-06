@@ -223,14 +223,16 @@ function search(v, args)
   end
 end
 
-local TAG_SETTING_TYPE = "__acme_tag_type"
-local TAG_SETTING_OTHER = "__acme_tag_other"
+local TAG_SETTING_TYPE = "__acme_tag_type_"
+local TAG_SETTING_OTHER = "__acme_tag_other_"
 
 local TAG_TYPE_TAG = 1
 local TAG_TYPE_BODY = 2
 
 function tag(body, args)
-  if body.Buf.Settings[TAG_SETTING_TYPE] then
+  local body_id = tostring(body:ID())
+
+  if body.Buf.Settings[TAG_SETTING_TYPE .. body_id] then
     return
   end
 
@@ -243,20 +245,25 @@ function tag(body, args)
 
   local tag = body:HSplitIndex(b, false)
   tag:ResizePane(3)
-  tag.Buf.Settings[TAG_SETTING_TYPE] = TAG_TYPE_TAG
-  tag.Buf.Settings[TAG_SETTING_OTHER] = body
+  local tag_id = tostring(tag:ID())
+  tag.Buf.Settings[TAG_SETTING_TYPE .. tag_id] = TAG_TYPE_TAG
+  tag.Buf.Settings[TAG_SETTING_OTHER .. tag_id] = body
 
-  body.Buf.Settings[TAG_SETTING_TYPE] = TAG_TYPE_BODY
-  body.Buf.Settings[TAG_SETTING_OTHER] = tag
+  body.Buf.Settings[TAG_SETTING_TYPE .. body_id] = TAG_TYPE_BODY
+  body.Buf.Settings[TAG_SETTING_OTHER .. body_id] = tag
 end
 
 function onQuit(pane)
-  if not pane.Buf.Settings[TAG_SETTING_TYPE] then
+  local id = tostring(pane:ID())
+
+  if not pane.Buf.Settings[TAG_SETTING_TYPE .. id] then
     return
   end
-  local other = pane.Buf.Settings[TAG_SETTING_OTHER]
-  other.Buf.Settings[TAG_SETTING_TYPE] = nil
-  other.Buf.Settings[TAG_SETTING_OTHER] = nil
+  local other = pane.Buf.Settings[TAG_SETTING_OTHER .. id]
+
+  local other_id = tostring(other:ID());
+  other.Buf.Settings[TAG_SETTING_TYPE .. other_id] = nil
+  other.Buf.Settings[TAG_SETTING_OTHER .. other_id] = nil
   other:Quit()
   return false
 end
@@ -270,9 +277,11 @@ function buildArgs(command)
 end
 
 function _tagExecute(tag, includeSelection)
+  local id = tostring(tag:ID())
+
   local body = tag
-  if tag.Buf.Settings[TAG_SETTING_TYPE] == TAG_TYPE_TAG then
-    body = tag.Buf.Settings[TAG_SETTING_OTHER]
+  if tag.Buf.Settings[TAG_SETTING_TYPE .. id] == TAG_TYPE_TAG then
+    body = tag.Buf.Settings[TAG_SETTING_OTHER .. id]
   end
 
   local m, startLoc, endLoc = expandText(tag)
