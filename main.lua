@@ -246,10 +246,7 @@ function buildArgs(command)
 end
 
 function tagExecute(tag, _args)
-  if tag.Buf.Settings[TAG_SETTING_KEY] == nil then
-    return
-  end
-  local body = tag.Buf.Settings[TAG_SETTING_KEY]
+  local body = tag.Buf.Settings[TAG_SETTING_KEY] or tag
 
   local m, startLoc, endLoc = expandText(tag)
 
