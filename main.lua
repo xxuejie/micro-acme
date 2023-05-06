@@ -250,8 +250,10 @@ function onQuit(pane)
   elseif opened_tags[pane.Buf.Path] then
     -- body view
     local tag = opened_tags[pane.Buf.Path]
-    opened_tags[pane.Buf.Path] = nil
-    tag:Quit()
+    if tag.Buf.Settings[TAG_SETTING_KEY] == pane then
+      opened_tags[pane.Buf.Path] = nil
+      tag:Quit()
+    end
   end
   return false
 end
