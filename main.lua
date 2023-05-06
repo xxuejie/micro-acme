@@ -15,7 +15,7 @@ function normalizeArgs(args)
   return result
 end
 
-SHELL = "bash"
+local SHELL = "bash"
 function wrapWithShell(path, args)
   return {"-l", "-c", "samfile=\"" .. path .. "\" " .. normalizeArgs(args)}
 end
@@ -95,7 +95,7 @@ end
 
 function pipeOut(pane, args)
   local a, b = getTextLoc(pane)
-  local oldTxt = getText(pane, a,b)
+  local oldTxt = getText(pane, a, b)
 
   innerExecuteWithStdin(pane.Buf.Path, args, oldTxt, showStdinExecuteOutput, { pane })
 end
@@ -117,13 +117,32 @@ end
 
 function pipeBoth(pane, args)
   local a, b = getTextLoc(pane)
-
   local oldTxt = getText(pane, a, b)
 
   innerExecuteWithStdin(pane.Buf.Path, args, oldTxt, showErrOrReplaceText, {pane, a, b})
 end
 
+local ARGUMENT_PLACEHOLDER = "@@"
+
+function executeWithSelection(pane, args)
+  local revisedArgs = {}
+  for i = 1, #args do
+    revisedArgs[i] = args[i]
+  end
+  revisedArgs[#revisedArgs + 1] = ARGUMENT_PLACEHOLDER
+  return execute(pane, revisedArgs)
+end
+
 function execute(pane, args)
+  local a, b = getTextLoc(pane)
+  local oldTxt = getText(pane, a, b)
+
+  for i = 1, #args do
+    if args[i] == ARGUMENT_PLACEHOLDER then
+      args[i] = oldTxt
+    end
+  end
+
   local output, err = innerExecute(pane.Buf.Path, args)
 
   showOutput(pane, output, err)
@@ -245,13 +264,17 @@ function buildArgs(command)
   return args
 end
 
-function tagExecute(tag, _args)
+function _tagExecute(tag, includeSelection)
   local body = tag.Buf.Settings[TAG_SETTING_KEY] or tag
 
   local m, startLoc, endLoc = expandText(tag)
 
   if m == nil or startLoc == nil or endLoc == nil then
     return
+  end
+
+  if includeSelection then
+    m = m .. " @@"
   end
 
   local prefix = string.sub(m, 1, 1)
@@ -267,11 +290,21 @@ function tagExecute(tag, _args)
   end
 end
 
+function tagExecuteWithSelection(tag, _args)
+  _tagExecute(tag, true)
+end
+
+function tagExecute(tag, _args)
+  _tagExecute(tag, false)
+end
+
 function init()
   config.MakeCommand(">", pipeOut, config.NoComplete)
   config.MakeCommand("<", pipeIn, config.NoComplete)
   config.MakeCommand("|", pipeBoth, config.NoComplete)
+  config.MakeCommand("E", executeWithSelection, config.NoComplete)
   config.MakeCommand("e", execute, config.NoComplete)
-  config.MakeCommand("E", tagExecute, config.NoComplete)
+  config.MakeCommand("X", tagExecuteWithSelection, config.NoComplete)
+  config.MakeCommand("x", tagExecute, config.NoComplete)
   config.MakeCommand("tag", tag, config.NoComplete)
 end
