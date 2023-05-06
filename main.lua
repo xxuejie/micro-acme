@@ -223,11 +223,17 @@ function search(v, args)
   end
 end
 
-local TAG_SETTING_KEY = "__acme_tag_path"
--- Path -> tag BufPane
-local opened_tags = {}
+local TAG_SETTING_TYPE = "__acme_tag_type"
+local TAG_SETTING_OTHER = "__acme_tag_other"
+
+local TAG_TYPE_TAG = 1
+local TAG_TYPE_BODY = 2
 
 function tag(body, args)
+  if body.Buf.Settings[TAG_SETTING_TYPE] then
+    return
+  end
+
   local path = body.Buf.Path
 
   local b = buffer.NewBuffer("", "")
@@ -237,24 +243,21 @@ function tag(body, args)
 
   local tag = body:HSplitIndex(b, false)
   tag:ResizePane(3)
-  tag.Buf.Settings[TAG_SETTING_KEY] = body
-  opened_tags[path] = tag
+  tag.Buf.Settings[TAG_SETTING_TYPE] = TAG_TYPE_TAG
+  tag.Buf.Settings[TAG_SETTING_OTHER] = body
+
+  body.Buf.Settings[TAG_SETTING_TYPE] = TAG_TYPE_BODY
+  body.Buf.Settings[TAG_SETTING_OTHER] = tag
 end
 
 function onQuit(pane)
-  if pane.Buf.Settings[TAG_SETTING_KEY] then
-    -- tag view
-    local body = pane.Buf.Settings[TAG_SETTING_KEY]
-    opened_tags[body.Buf.Path] = nil
-    body:Quit()
-  elseif opened_tags[pane.Buf.Path] then
-    -- body view
-    local tag = opened_tags[pane.Buf.Path]
-    if tag.Buf.Settings[TAG_SETTING_KEY] == pane then
-      opened_tags[pane.Buf.Path] = nil
-      tag:Quit()
-    end
+  if not pane.Buf.Settings[TAG_SETTING_TYPE] then
+    return
   end
+  local other = pane.Buf.Settings[TAG_SETTING_OTHER]
+  other.Buf.Settings[TAG_SETTING_TYPE] = nil
+  other.Buf.Settings[TAG_SETTING_OTHER] = nil
+  other:Quit()
   return false
 end
 
@@ -267,7 +270,10 @@ function buildArgs(command)
 end
 
 function _tagExecute(tag, includeSelection)
-  local body = tag.Buf.Settings[TAG_SETTING_KEY] or tag
+  local body = tag
+  if tag.Buf.Settings[TAG_SETTING_TYPE] == TAG_TYPE_TAG then
+    body = tag.Buf.Settings[TAG_SETTING_OTHER]
+  end
 
   local m, startLoc, endLoc = expandText(tag)
 
