@@ -27,7 +27,7 @@ function innerExecute(path, args)
   return shell.ExecCommand(SHELL, unpack(wrapWithShell(path, args)))
 end
 
-function showOutput(output, err)
+function showOutput(pane, output, err)
   if err ~= nil then
     micro.InfoBar():Error(err)
   end
@@ -38,12 +38,12 @@ function showOutput(output, err)
     b.Type.Scratch = true
     b:SetOptionNative("statusformatr", "")
     b:SetOptionNative("statusformatl", "+Errors")
-    micro.CurPane():VSplitIndex(b, true)
+    pane:VSplitIndex(b, true)
   end
 end
 
-function showStdinExecuteOutput(output, _userargs)
-  showOutput(output, nil)
+function showStdinExecuteOutput(output, userargs)
+  showOutput(userargs[1], output, nil)
 end
 
 function innerExecuteWithStdin(path, args, stdin, onExit, userargs)
@@ -97,7 +97,7 @@ function pipeOut(pane, args)
   local a, b = getTextLoc(pane)
   local oldTxt = getText(pane, a,b)
 
-  innerExecuteWithStdin(pane.Buf.Path, args, oldTxt, showStdinExecuteOutput, {})
+  innerExecuteWithStdin(pane.Buf.Path, args, oldTxt, showStdinExecuteOutput, { pane })
 end
 
 function pipeIn(pane, args)
@@ -105,7 +105,7 @@ function pipeIn(pane, args)
 
   local output, err = innerExecute(pane.Buf.Path, args)
   if err ~= nil then
-    showOutput(output, err)
+    showOutput(pane, output, err)
   else
     pane.Buf:Replace(a, b, strings.TrimSuffix(output, "\n"))
   end
@@ -124,7 +124,9 @@ function pipeBoth(pane, args)
 end
 
 function execute(pane, args)
-  showOutput(innerExecute(pane.Buf.Path, args))
+  local output, err = innerExecute(pane.Buf.Path, args)
+
+  showOutput(pane, output, err)
 end
 
 function isFileExists(filename)
