@@ -54,8 +54,7 @@ function innerExecuteWithStdin(path, args, stdin, onExit, userargs)
 end
 
 -- Adapted from https://github.com/NicolaiSoeborg/manipulator-plugin/blob/6c621d93985ba696873c54985c0d73d2e59a15e3/manipulator.lua
-function getTextLoc()
-  local v = micro.CurPane()
+function getTextLoc(v)
   local a, b, c = nil, nil, v.Cursor
   if c:HasSelection() then
     if c.CurSelection[1]:GreaterThan(-c.CurSelection[2]) then
@@ -71,8 +70,8 @@ function getTextLoc()
 end
 
 -- Returns the current marked text or whole line
-function getText(a, b)
-  local txt, buf = {}, micro.CurPane().Buf
+function getText(pane, a, b)
+  local txt, buf = {}, pane.Buf
 
   -- Editing a single line?
   if a.Y == b.Y then
@@ -95,14 +94,14 @@ end
 
 
 function pipeOut(pane, args)
-  local a, b = getTextLoc()
-  local oldTxt = getText(a,b)
+  local a, b = getTextLoc(pane)
+  local oldTxt = getText(pane, a,b)
 
   innerExecuteWithStdin(pane.Buf.Path, args, oldTxt, showStdinExecuteOutput, {})
 end
 
 function pipeIn(pane, args)
-  local a, b = getTextLoc()
+  local a, b = getTextLoc(pane)
 
   local output, err = innerExecute(pane.Buf.Path, args)
   if err ~= nil then
@@ -117,9 +116,9 @@ function showErrOrReplaceText(output, userargs)
 end
 
 function pipeBoth(pane, args)
-  local a, b = getTextLoc()
+  local a, b = getTextLoc(pane)
 
-  local oldTxt = getText(a,b)
+  local oldTxt = getText(pane, a, b)
 
   innerExecuteWithStdin(pane.Buf.Path, args, oldTxt, showErrOrReplaceText, {pane, a, b})
 end
@@ -133,16 +132,14 @@ function isFileExists(filename)
   return not os.IsNotExist(err)
 end
 
-function search(_pane, args)
-  local v = micro.CurPane()
-
+function expandText(v)
   local startLoc = nil
   local endLoc = nil
   local m = nil
 
   if v.Cursor:HasSelection() then
-    startLoc, endLoc = getTextLoc()
-    m = getText(startLoc, endLoc)
+    startLoc, endLoc = getTextLoc(v)
+    m = getText(v, startLoc, endLoc)
   elseif v.Cursor ~= nil then
     local line = v.Buf:Line(v.Cursor.Loc.Y)
 
@@ -157,6 +154,12 @@ function search(_pane, args)
     startLoc = buffer.Loc(v.Cursor.Loc.X - #m1, v.Cursor.Loc.Y)
     endLoc = buffer.Loc(startLoc.X + #m - 1, v.Cursor.Loc.Y)
   end
+
+  return m, startLoc, endLoc
+end
+
+function search(v, args)
+  local m, startLoc, endLoc = expandText(v)
 
   if m == nil or startLoc == nil or endLoc == nil then
     return
@@ -199,9 +202,77 @@ function search(_pane, args)
   end
 end
 
+local TAG_SETTING_KEY = "__acme_tag_path"
+-- Path -> tag BufPane
+local opened_tags = {}
+
+function tag(body, args)
+  local path = body.Buf.Path
+
+  local b = buffer.NewBuffer("", "")
+  b.Type.Scratch = true
+  b:SetOptionNative("statusformatr", "")
+  b:SetOptionNative("statusformatl", "+Tags@" .. path)
+
+  local tag = body:HSplitIndex(b, false)
+  tag:ResizePane(3)
+  tag.Buf.Settings[TAG_SETTING_KEY] = body
+  opened_tags[path] = tag
+end
+
+function onQuit(pane)
+  if pane.Buf.Settings[TAG_SETTING_KEY] then
+    -- tag view
+    local body = pane.Buf.Settings[TAG_SETTING_KEY]
+    opened_tags[body.Buf.Path] = nil
+    body:Quit()
+  elseif opened_tags[pane.Buf.Path] then
+    -- body view
+    local tag = opened_tags[pane.Buf.Path]
+    opened_tags[pane.Buf.Path] = nil
+    tag:Quit()
+  end
+  return false
+end
+
+function buildArgs(command)
+  local args = {}
+  for a in string.gmatch(command, "([^%s]+)") do
+    args[#args + 1] = a
+  end
+  return args
+end
+
+function tagExecute(tag, _args)
+  if tag.Buf.Settings[TAG_SETTING_KEY] == nil then
+    return
+  end
+  local body = tag.Buf.Settings[TAG_SETTING_KEY]
+
+  local m, startLoc, endLoc = expandText(tag)
+
+  if m == nil or startLoc == nil or endLoc == nil then
+    return
+  end
+
+  local prefix = string.sub(m, 1, 1)
+
+  if prefix == ">" then
+    pipeOut(body, buildArgs(string.sub(m, 2)))
+  elseif prefix == "<" then
+    pipeIn(body, buildArgs(string.sub(m, 2)))
+  elseif prefix == "|" then
+    pipeBoth(body, buildArgs(string.sub(m, 2)))
+  else
+    execute(body, buildArgs(m))
+  end
+end
+
 function init()
   config.MakeCommand(">", pipeOut, config.NoComplete)
   config.MakeCommand("<", pipeIn, config.NoComplete)
   config.MakeCommand("|", pipeBoth, config.NoComplete)
   config.MakeCommand("e", execute, config.NoComplete)
+  config.MakeCommand("E", tagExecute, config.NoComplete)
+  config.MakeCommand("tag", tag, config.NoComplete)
 end
