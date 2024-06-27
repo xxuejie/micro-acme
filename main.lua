@@ -17,7 +17,7 @@ end
 
 local SHELL = "bash"
 function wrapWithShell(path, args)
-  return {"-l", "-c", "samfile=\"" .. path .. "\" " .. normalizeArgs(args)}
+  return {"-l", "-c", "samfile=\"" .. path .. "\" PATH=\"`pwd`:$PATH\" " .. normalizeArgs(args)}
 end
 
 function innerExecute(path, args)
