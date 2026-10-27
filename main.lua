@@ -1,4 +1,4 @@
-VERSION = "0.0.2"
+VERSION = "0.0.4"
 
 local micro = import("micro")
 local buffer = import("micro/buffer")
@@ -201,9 +201,29 @@ function search(v, args)
     v:HSplitIndex(b, true)
     local nv = micro.CurPane()
     if #data > 1 and string.match(data[2], "%d") then
-      local loc = buffer.Loc(0, tonumber(data[2]) - 1)
-      nv.Cursor:GotoLoc(loc)
-      nv.Cursor:ResetSelection()
+      local line = tonumber(data[2]) - 1
+      -- Optional components, all 1-based:
+      --   file:line          cursor at the line
+      --   file:line:col      cursor at the column
+      --   file:line:col:cole select the range [col, cole] (inclusive end)
+      local col = tonumber(string.match(data[3] or "", "^%d+"))
+      local cole = tonumber(string.match(data[4] or "", "^%d+"))
+
+      if col ~= nil and cole ~= nil then
+        if cole < col then
+          col, cole = cole, col
+        end
+        nv.Cursor:SetSelectionStart(buffer.Loc(col - 1, line))
+        nv.Cursor:SetSelectionEnd(buffer.Loc(cole, line))
+        nv.Cursor:GotoLoc(buffer.Loc(cole, line))
+      else
+        local c = 0
+        if col ~= nil and col > 0 then
+          c = col - 1
+        end
+        nv.Cursor:GotoLoc(buffer.Loc(c, line))
+        nv.Cursor:ResetSelection()
+      end
       nv:Relocate()
     end
   else
@@ -315,6 +335,58 @@ function tagExecute(tag, _args)
   _tagExecute(tag, false)
 end
 
+-- ee: streaming variant of `e`. Instead of waiting for the command to
+-- finish, the output pane opens immediately and the child's stdout/stderr
+-- is appended to it as it arrives, so progress is visible while it runs.
+--
+-- Usage: ee <binary> [args...]
+-- The first argument is the binary to run, found via PATH or given as a
+-- full path; the remaining arguments are passed through unchanged. The
+-- child runs with `samfile` set to the buffer's path, exactly like `e`.
+-- Its stdin is /dev/null, also matching `e` (shell.ExecCommand): a pipe
+-- would change how some tools behave — e.g. rg reads stdin instead of
+-- searching the working directory when stdin is a pipe.
+-- The pane statusline title infers the binary name, e.g. `+rg (running)`,
+-- and flips to `+rg ✓` when the command exits. The pane is kept readonly:
+-- Readonly is only lifted around each programmatic append (micro's
+-- Buffer:Insert is a no-op on readonly buffers).
+function ee(bp, args)
+  if args == nil or #args == 0 then
+    micro.InfoBar():Error("ee: usage: ee <binary> [args...]")
+    return
+  end
+
+  local b = buffer.NewBuffer("", "")
+  b.Type.Scratch = true
+  b.Type.Readonly = true
+  b:SetOptionNative("statusformatr", "")
+  b:SetOptionNative("statusformatl", "+" .. args[1] .. " (running)")
+  bp:VSplitIndex(b, true)
+
+  local cmdArgs = wrapWithShell(bp.Buf.Path or "", args)
+  cmdArgs[3] = cmdArgs[3] .. " < /dev/null"
+  local job = shell.JobSpawn(SHELL, cmdArgs,
+    eeAppend, eeAppend, eeExit, b, args[1])
+  job.Stdin:Close()
+end
+
+function eeAppend(chunk, args)
+  local b = args[1]
+  b.Type.Readonly = false
+  b:Insert(b:End(), chunk)
+  b.Type.Readonly = true
+end
+
+function eeExit(output, args)
+  local b = args[1]
+  b.Type.Readonly = false
+  if output == nil or #output == 0 then
+    b:Insert(b:End(), "[ee " .. args[2] .. "] finished with no output\n")
+  end
+  b.Type.Readonly = true
+  b:SetOptionNative("statusformatl", "+" .. args[2] .. " ✓")
+end
+
 function init()
   config.MakeCommand(">", pipeOut, config.NoComplete)
   config.MakeCommand("<", pipeIn, config.NoComplete)
@@ -324,4 +396,5 @@ function init()
   config.MakeCommand("X", tagExecuteWithSelection, config.NoComplete)
   config.MakeCommand("x", tagExecute, config.NoComplete)
   config.MakeCommand("tag", tag, config.NoComplete)
+  config.MakeCommand("ee", ee, config.NoComplete)
 end
